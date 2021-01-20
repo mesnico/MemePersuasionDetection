@@ -1,0 +1,33 @@
+dataset:
+  root: 'data'  # not needed if using pre-extracted bottom-up features
+  task: 1
+
+text-model:
+  name: 'bert'
+  pretrain: 'bert-base-uncased'
+  word-dim: 768
+  extraction-hidden-layer: 10
+  fine-tune: False
+
+image-model:
+  name: 'resnet50'
+  enabled: False
+  fine-tune: False
+  feat-dim: 2048
+  grid: [7, 7]
+
+model:
+  name: 'transformer'
+  embed-dim: 1024
+  feedforward-dim: 1024
+  num-layers: 4
+
+
+training:
+  lr: 0.00001  # 0.000006
+  pretrained-modules-lr: 0.000002
+  grad-clip: 2.0
+  bs: 8
+  scheduler: 'steplr'
+  milestones: [30]
+  gamma: 0.1
