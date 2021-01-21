@@ -90,7 +90,7 @@ class PositionalEncodingImageGrid(nn.Module):
 
 
 class JointTransformer(nn.Module):
-    def __init__(self, cfg):
+    def __init__(self, cfg, labels):
         super().__init__()
         embed_dim = cfg['model']['embed-dim']
         feedforward_dim = cfg['model']['feedforward-dim']
@@ -107,6 +107,7 @@ class JointTransformer(nn.Module):
         self.map_image = nn.Linear(visual_features_dim, embed_dim) # + 2 spatial dimensions for encoding the image grid
 
         self.image_position_conditioner = PositionalEncodingImageGrid(visual_features_dim, grid)
+        self.multi_label_class_head = nn.Linear(cfg['model']['embed-dim'], len(labels))
 
     '''
     boxes: B x S x 4
@@ -150,7 +151,9 @@ class JointTransformer(nn.Module):
         out = self.joint_transformer(embeddings, src_key_padding_mask=mask)
         multimod_feature = out[0, :, :]
 
-        return multimod_feature
+        # final multi-class head
+        class_logits = self.multi_label_class_head(multimod_feature)
+        return class_logits
 
 
 class MemeMultiLabelClassifier(nn.Module):
@@ -160,12 +163,11 @@ class MemeMultiLabelClassifier(nn.Module):
         if self.visual_enabled:
             self.visual_module = EncoderImageCNN(cfg)
         self.textual_module = EncoderTextBERT(cfg)
-        self.joint_processing_module = JointTransformer(cfg)
+        self.joint_processing_module = JointTransformer(cfg, labels)
 
         self.finetune_visual = cfg['image-model']['fine-tune']
         self.finetune_textual = cfg['text-model']['fine-tune']
 
-        self.multi_label_class_head = nn.Linear(cfg['model']['embed-dim'], len(labels))
         self.loss = nn.MultiLabelSoftMarginLoss()
         self.labels = labels
 
@@ -181,7 +183,7 @@ class MemeMultiLabelClassifier(nn.Module):
         return out_classes
 
 
-    def forward(self, image, text, text_len, labels=None, inference_threshold=0.5):
+    def forward(self, image, text, text_len, labels=None, return_probs=False, inference_threshold=0.5):
         if self.visual_enabled:
             with torch.set_grad_enabled(self.finetune_visual):
                 image_feats = self.visual_module(image)
@@ -189,13 +191,14 @@ class MemeMultiLabelClassifier(nn.Module):
             image_feats = None
         with torch.set_grad_enabled(self.finetune_textual):
             text_feats = self.textual_module(text, text_len)
-        multimodal_feat = self.joint_processing_module(text_feats, text_len, image_feats)
-        class_logits = self.multi_label_class_head(multimodal_feat)
+        class_logits = self.joint_processing_module(text_feats, text_len, image_feats)
         if self.training:
             loss = self.loss(class_logits, labels)
             return loss
         else:
             probs = F.sigmoid(class_logits)
+            if return_probs:
+                return probs
             classes_ids = probs > inference_threshold
             classes = self.id_to_classes(classes_ids)
             return classes

@@ -2,6 +2,7 @@ import os
 
 import tqdm
 import yaml
+import json
 import numpy as np
 from torch.utils.data import DataLoader
 from torchvision import transforms as T
@@ -44,17 +45,30 @@ def main():
     parser.add_argument('--load-model', default='', type=str, metavar='PATH',
                         help='path to latest checkpoint (default: none). Loads only the model')
     parser.add_argument('--config', type=str, help="Which configuration to use. See into 'config' folder")
+    parser.add_argument('--cross-validation', action='store_true', help='Enables cross validation')
 
     opt = parser.parse_args()
     print(opt)
+    with open(opt.config, 'r') as ymlfile:
+        config = yaml.load(ymlfile)
 
+    if opt.cross_validation:
+        # read splits from file
+        with open('data/folds.json', 'r') as f:
+            folds = json.load(f)
+            num_folds = len(folds)
+        for fold in tqdm.trange(num_folds):
+            train(opt, config, val_fold=fold)
+    else:
+        # train using fold 0 as validation fold
+        train(opt, config, val_fold=0)
+
+def train(opt, config, val_fold=0):
     # torch.cuda.set_enabled_lms(True)
     # if (torch.cuda.get_enabled_lms()):
     #     torch.cuda.set_limit_lms(11000 * 1024 * 1024)
     #     print('[LMS=On limit=' + str(torch.cuda.get_limit_lms()) + ']')
 
-    with open(opt.config, 'r') as ymlfile:
-        config = yaml.load(ymlfile)
     if 'task' not in config['dataset']:
         config['dataset']['task'] = 3 # for back compatibility
         print('Manually assigning: task 3')
@@ -79,7 +93,6 @@ def main():
                     T.ToTensor(),
                     T.Normalize(mean=[0.485, 0.456, 0.406],
                                 std=[0.229, 0.224, 0.225])])
-    val_fold = 0
 
     train_dataset = SemEvalDataset(config, split='train', transforms=train_transforms, val_fold=val_fold)
     val_dataset = SemEvalDataset(config, split='val', transforms=test_transforms, val_fold=val_fold)
@@ -112,11 +125,14 @@ def main():
         model.cuda()
 
     # Construct the optimizer
-    optimizer = torch.optim.Adam([
-        {'params': [p for n, p in model.named_parameters() if 'textual_module' not in n and 'visual_module' not in n]},
-        {'params': model.textual_module.parameters(), 'lr': config['training']['pretrained-modules-lr']},
-        {'params': model.visual_module.parameters(), 'lr': config['training']['pretrained-modules-lr']}]
-        , lr=config['training']['lr'])
+    if not config['text-model']['fine-tune'] and not config['image-model']['fine-tune']:
+        optimizer = torch.optim.Adam([p for n, p in model.named_parameters() if 'textual_module' not in n and 'visual_module' not in n], lr=config['training']['lr'])
+    else:
+        optimizer = torch.optim.Adam([
+            {'params': [p for n, p in model.named_parameters() if 'textual_module' not in n and 'visual_module' not in n]},
+            {'params': model.textual_module.parameters(), 'lr': config['training']['pretrained-modules-lr']},
+            {'params': model.visual_module.parameters(), 'lr': config['training']['pretrained-modules-lr']}]
+            , lr=config['training']['lr'])
 
     # LR scheduler
     scheduler_name = config['training']['scheduler']
@@ -201,10 +217,10 @@ def main():
                     checkpoint = {
                         'cfg': config,
                         'epoch': epoch,
-                        'model': model.state_dict(),
-                        'optimizer': optimizer.state_dict(),
-                        'scheduler': scheduler.state_dict()}
-                    latest = os.path.join(experiment_path, 'model_best.pt')
+                        'model': model.joint_processing_module.state_dict() if not config['text-model']['fine-tune'] and not config['image-model']['fine-tune'] else model.state_dict()}
+                        # 'optimizer': optimizer.state_dict(),
+                        # 'scheduler': scheduler.state_dict()}
+                    latest = os.path.join(experiment_path, 'model_best_fold{}.pt'.format(val_fold))
                     torch.save(checkpoint, latest)
                     best_f1 = metrics['macroF1_thr=0.3'] + metrics['microF1_thr=0.3']
 

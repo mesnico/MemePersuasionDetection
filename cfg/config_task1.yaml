@@ -22,12 +22,12 @@ model:
   feedforward-dim: 1024
   num-layers: 4
 
-
 training:
+  balanced-sampling: False
   lr: 0.00001  # 0.000006
   pretrained-modules-lr: 0.000002
   grad-clip: 2.0
   bs: 8
   scheduler: 'steplr'
-  milestones: [30]
+  milestones: [40]
   gamma: 0.1

@@ -14,6 +14,16 @@ from scorer.task1_3 import evaluate
 from torchvision import transforms as T
 
 
+def id_to_classes(classes_ids, labels):
+    out_classes = []
+    for elem in classes_ids:
+        int_classes = []
+        for idx, ids in enumerate(elem):
+            if ids:
+                int_classes.append(labels[idx])
+        out_classes.append(int_classes)
+    return out_classes
+
 def main(opt):
     checkpoint = torch.load(opt.checkpoint, map_location='cpu')
     cfg = checkpoint['cfg']
@@ -26,11 +36,24 @@ def main(opt):
     elif cfg['dataset']['task'] == 1:
         classes = read_classes('techniques_list_task1-2.txt')
 
-    model = models.MemeMultiLabelClassifier(cfg, classes)
+    if opt.ensemble:
+        checkpoints_folder = os.path.split(opt.checkpoint)[0]
+        checkpoints_files = [os.path.join(checkpoints_folder, f) for f in os.listdir(checkpoints_folder) if '.pt' in f]
+    else:
+        checkpoints_files = [opt.checkpoint]
 
-    # Load weights to resume from
-    model.load_state_dict(checkpoint['model'])
-    model.cuda().eval()
+    ensemble_models = []
+    for chkp in checkpoints_files:
+        model = models.MemeMultiLabelClassifier(cfg, classes)
+        checkpoint = torch.load(chkp, map_location='cpu')
+        # Load weights to resume from
+        if not cfg['text-model']['fine-tune'] and not cfg['image-model']['fine-tune']:
+            # the visual and textual modules are already fine
+            model.joint_processing_module.load_state_dict(checkpoint['model'])
+        else:
+            model.load_state_dict(checkpoint['model'])
+        model.cuda().eval()
+        ensemble_models.append(model)
 
     # Load data loaders
     test_transforms = T.Compose([T.Resize(256),
@@ -60,8 +83,15 @@ def main(opt):
             image = image.cuda() if image is not None else None
             text = text.cuda()
             # labels = labels.cuda()
+
+        ensemble_predictions = []
         with torch.no_grad():
-            pred_classes = model(image, text, text_len, inference_threshold=thr)
+            for model in ensemble_models:
+                pred_probs = model(image, text, text_len, return_probs=True)
+                ensemble_predictions.append(pred_probs)
+            prob_ensemble = torch.stack(ensemble_predictions, dim=1).mean(dim=1)
+            class_ensemble = prob_ensemble > thr
+            pred_classes = id_to_classes(class_ensemble, classes)
 
         for id, labels in zip(ids, pred_classes):    # loop over every element of the batch
             predictions.append({'id': id, 'labels': labels})
@@ -87,10 +117,11 @@ def main(opt):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--threshold', default=0.3, type=float, help="Threshold to use for classification")
-    parser.add_argument('--checkpoint', default='', type=str, metavar='PATH',
+    parser.add_argument('--checkpoint', default=None, type=str, metavar='PATH',
                         help='path to latest checkpoint (default: none). Loads only the model')
     parser.add_argument('--validate', action='store_true', help="If not set, default is inference on the dev set")
     parser.add_argument('--val_fold', default=0, type=int, help="Which fold we validate on (use with --validate)")
+    parser.add_argument('--ensemble', action='store_true', help='Enables model ensembling')
     # parser.add_argument('--config', type=str, help="Which configuration to use. See into 'config' folder")
 
     opt = parser.parse_args()

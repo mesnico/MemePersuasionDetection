@@ -3,8 +3,8 @@ import json
 import random
 
 if __name__ == '__main__':
-    how_many_folds = 8
-    use_fold_zero_from_old = True
+    how_many_folds = 6
+    use_fold_zero_from_old = False
 
     label_file = os.path.join('training_set_task3', 'training_set_task3.txt')
 
