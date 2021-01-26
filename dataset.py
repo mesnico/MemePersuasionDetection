@@ -32,6 +32,8 @@ class SemEvalDataset(Dataset):
             self.split_name = 'training'
         elif split == 'dev':
             self.split_name = 'dev'
+        elif split == 'test':
+            self.split_name = 'test'
 
         if task == 3:
             label_file = os.path.join(self.data_root, '{}_set_task3'.format(self.split_name), '{}_set_task3.txt'.format(self.split_name))
@@ -42,10 +44,24 @@ class SemEvalDataset(Dataset):
 
         with open(label_file, 'r', encoding='utf8') as f:
             self.targets = json.load(f)
+        for t in self.targets:
+            t['path'] = os.path.join(self.data_root, '{}_set_task3'.format(self.split_name))
+
+        if task == 3:
+            label_file_dev = os.path.join(self.data_root, 'dev_set_task3_labeled', 'dev_set_task3_labeled.txt')
+        elif task == 1:
+            label_file_dev = os.path.join(self.data_root, 'dev_set_task1.txt')
+        if os.path.isfile(label_file_dev) and self.split_name == 'training':
+            with open(label_file_dev, 'r', encoding='utf8') as f:
+                targets = json.load(f)
+                for t in targets:
+                    t['path'] = os.path.join(self.data_root, 'dev_set_task3_labeled')
+                self.targets.extend(targets)
 
         # filter targets using the ids
         if split == 'train' or split == 'val':
             self.targets = [t for t in self.targets if t['id'] in ids]
+        print('ok')
 
     def __len__(self):
         return len(self.targets)
@@ -62,7 +78,7 @@ class SemEvalDataset(Dataset):
 
         if 'image' in info:
             # task 3
-            img_path = os.path.join(self.data_root, '{}_set_task3'.format(self.split_name), info['image'])
+            img_path = os.path.join(info['path'], info['image'])
             image = Image.open(img_path).convert("RGB")
             if self.transforms is not None:
                 image = self.transforms(image)

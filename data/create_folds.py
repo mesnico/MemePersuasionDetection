@@ -5,11 +5,17 @@ import random
 if __name__ == '__main__':
     how_many_folds = 6
     use_fold_zero_from_old = False
+    use_dev_set = True
 
     label_file = os.path.join('training_set_task3', 'training_set_task3.txt')
-
     with open(label_file, 'r', encoding='utf8') as f:
         targets = json.load(f)
+
+    if use_dev_set:
+        label_file_dev = os.path.join('dev_set_task3_labeled', 'dev_set_task3_labeled.txt')
+        with open(label_file_dev, 'r', encoding='utf8') as f:
+            targets_dev = json.load(f)
+            targets.extend(targets_dev)
 
     if use_fold_zero_from_old:
         with open('folds_old.json', 'r') as f:
