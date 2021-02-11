@@ -128,12 +128,18 @@ def train(opt, config, val_fold=0):
     if not config['text-model']['fine-tune'] and not config['image-model']['fine-tune']:
         optimizer = torch.optim.Adam([p for n, p in model.named_parameters() if 'textual_module' not in n and 'visual_module' not in n], lr=config['training']['lr'])
     else:
-        optimizer = torch.optim.Adam([
-            {'params': [p for n, p in model.named_parameters() if 'textual_module' not in n and 'visual_module' not in n]},
-            {'params': model.textual_module.parameters(), 'lr': config['training']['pretrained-modules-lr']},
-            {'params': model.visual_module.parameters(), 'lr': config['training']['pretrained-modules-lr']}]
-            , lr=config['training']['lr'])
-
+        if config['dataset']['task'] == 3:
+            optimizer = torch.optim.Adam([
+                {'params': [p for n, p in model.named_parameters() if 'textual_module' not in n and 'visual_module' not in n]},
+                {'params': model.textual_module.parameters(), 'lr': config['training']['pretrained-modules-lr']},
+                {'params': model.visual_module.parameters(), 'lr': config['training']['pretrained-modules-lr']}]
+                , lr=config['training']['lr'])
+        elif config['dataset']['task'] == 1:
+            optimizer = torch.optim.Adam([
+                {'params': [p for n, p in model.named_parameters() if
+                            'textual_module' not in n and 'visual_module' not in n]},
+                {'params': model.textual_module.parameters(), 'lr': config['training']['pretrained-modules-lr']}]
+                , lr=config['training']['lr'])
     # LR scheduler
     scheduler_name = config['training']['scheduler']
     if scheduler_name == 'steplr':
