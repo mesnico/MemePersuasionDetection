@@ -50,7 +50,7 @@ def main():
     opt = parser.parse_args()
     print(opt)
     with open(opt.config, 'r') as ymlfile:
-        config = yaml.load(ymlfile)
+        config = yaml.safe_load(ymlfile)
 
     if opt.cross_validation:
         # read splits from file

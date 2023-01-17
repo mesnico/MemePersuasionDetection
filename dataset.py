@@ -129,14 +129,14 @@ class Collate:
         return images, out_texts, text_lengths, out_classes, ids
 
 
-import yaml
-from torch.utils.data import DataLoader
-from torchvision import transforms as T
-
 if __name__ == '__main__':
+    import yaml
+    from torch.utils.data import DataLoader
+    from torchvision import transforms as T
+
     cfg_file = 'cfg/config_task3.yaml'
     with open(cfg_file, 'r') as f:
-        cfg = yaml.load(f)
+        cfg = yaml.safe_load(f)
 
     # initialize dataset
     transforms = T.Compose([T.Resize(256),
@@ -151,6 +151,6 @@ if __name__ == '__main__':
     collate_fn = Collate(cfg)
     dataloader = DataLoader(dataset, batch_size=3, shuffle=False, collate_fn=collate_fn)
     for images, texts, text_lengths, out_classes, ids in dataloader:
-        print('ciao')
+        print(texts)
 
 
